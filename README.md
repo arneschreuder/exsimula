@@ -20,22 +20,3 @@ Install all requirements using:
 ```
 python -m pip install -r requirements.txt
 ```
-
-
-## Usage
-
-See help using:
-
-```
-python main.py --help
-```
-
-## Example
-
-Run the example using:
-
-```
-python main.py \
-	--program "example/program.json" \
-	--memory "example/memory.json"
-```

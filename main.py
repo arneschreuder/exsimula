@@ -1,49 +1,34 @@
-import importlib
-import json
-import typer
-from exsimula.program import Program
-from pathlib import Path
+from exsimula.graph import Edge, Graph, Node
 
+source = Node("source")
+n1 = Node("n1")
+n2 = Node("n2")
+n3 = Node("n3")
+n4 = Node("n4")
+target = Node("target")
 
-def run_program(program_config_path: Path, memory_config_path: Path):
-    """
-    Initializes and runs the program with the given configuration files.
+e1 = Edge("e1")
+e2 = Edge("e2")
+e3 = Edge("e3")
+e4 = Edge("e4")
+e5 = Edge("e5")
 
-    Args:
-        program_config_path (Path): Path to the program's configuration file.
-        memory_config_path (Path): Path to the memory's configuration file.
-    """
-    # Initialize the program with the loaded program configuration
-    program = Program(config=program_config_path)
+graph = Graph()
 
-    # Load the memory configuration from the given path
-    with open(memory_config_path, "r") as f:
-        memory = json.load(f)
+graph.add_node(n1)
+graph.add_node(n2)
+graph.add_node(n3)
+graph.add_node(n4)
+graph.add_edge(e1)
+graph.add_edge(e2)
+graph.add_edge(e3)
+graph.connect(source, n1, e1)
+graph.connect(n1, n2, e2)
+graph.connect(n2, n3, e3)
+graph.connect(n3, n4, e4)
+graph.connect(n4, target, e5)
 
-    # Run the program with the initial memory and update memory
-    memory = program.run(memory)
+graph.set_source_node(source)
+graph.set_target_node(target)
 
-    # Print the updated memory after running the program
-    print(memory)
-
-
-def main(
-    program: Path = typer.Option(
-        ..., "--program", help="Path to the program config file"
-    ),
-    memory: Path = typer.Option(..., "--memory", help="Path to the memory config file"),
-):
-    """
-    Main entry point for the CLI tool that runs the program.
-
-    Args:
-        program (Path): Path to the program configuration file (provided via CLI argument).
-        memory (Path): Path to the memory configuration file (provided via CLI argument).
-    """
-    # Call the run_program function with the provided config paths
-    run_program(program, memory)
-
-
-if __name__ == "__main__":
-    # Execute the main function when the script is run
-    typer.run(main)
+graph()
