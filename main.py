@@ -12,7 +12,7 @@ def f1(state: Dict) -> Dict:
 def condition(state: Dict) -> Dict:
     print("condition")
     state["messages"] = state["messages"] + ["condition"]
-    return state, "goto"
+    return state, False
 
 
 def f2(state: Dict) -> Dict:
@@ -35,7 +35,14 @@ def loop(state: Dict) -> Dict:
 
 source = Source()
 source.add_function("f1", f1)
-source.add_condition("condition", condition, {"goto": "condition:loop"})
+source.add_condition(
+    "condition",
+    condition,
+    {
+        True: "condition:f2",  # This is not great, user only wants to make to next node/function, not edge
+        False: "condition:loop",
+    },
+)
 source.add_function("f2", f2)
 source.add_loop("loop", loop, 10)
 source.add_function("f3", f3)
@@ -48,7 +55,7 @@ source.add_step("f2", Source.END)
 source.add_step("loop", "f3")
 source.add_step("f3", Source.END)
 
-program = Program("HelloWorld")
+program = Program()
 program.compile(source)
 
 memory = Memory({"messages": []})

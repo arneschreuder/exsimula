@@ -226,7 +226,6 @@ class Graph:
         return (state, next_node)
 
     def __call__(self, state: Dict) -> Dict:
-        print(f"Calling graph id:{self.id}")
         assert self.source_node is not None, "source_node is not set"
         assert self.target_node is not None, "target_node is not set"
 
