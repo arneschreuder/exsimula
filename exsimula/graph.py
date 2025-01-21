@@ -1,23 +1,33 @@
 from __future__ import annotations
-from typing import Dict, Optional
+from abc import ABC
+from collections import OrderedDict
+from typing import Dict, List, Optional
 import uuid
 
 
-class Node:
+class Node(ABC):
     id: str
-    edges: Dict[str, Edge]
+    edges: List[Edge]
 
-    def __init__(
-        self, id: Optional[str] = uuid.uuid1(), edges: Optional[Dict[str, Edge]] = None
-    ):
-        self.id = id
-        self.edges = edges or {}
+    def __init__(self, id: Optional[str] = None, edges: Optional[List[Edge]] = None):
+        self.id = id or uuid.uuid1()
+        self.edges = edges or []
 
-    def __call__(self):
+    def __call__(self) -> Optional[Edge]:
         print(f"Calling node id:{self.id}")
+        # This is the default implementation for the graph that does not have parallel traversal
+        # It's kinda like depth first traversal
+        # Get all edges, where source node is this node
+        if self.edges:
+            # something like [edge for self.edges.values() if edge.source_node == self]
+            target_edges = [edge for edge in self.edges if edge.source_node == self]
+            if target_edges:
+                return next(iter(self.edges))
+        return None
 
     def add_edge(self, edge: Edge):
-        self.edges[edge.id] = edge
+        assert edge not in self.edges, "edge is already in edges"
+        self.edges.append(edge)
 
 
 class Edge:
@@ -27,16 +37,18 @@ class Edge:
 
     def __init__(
         self,
-        id: Optional[str] = uuid.uuid1(),
+        id: Optional[str] = None,
         source_node: Optional[Node] = None,
         target_node: Optional[Node] = None,
     ):
-        self.id = id
+        self.id = id or uuid.uuid1()
         self.source_node = source_node
         self.target_node = target_node
 
-    def __call__(self):
+    def __call__(self) -> Node:
         print(f"Calling edge id:{self.id}")
+        assert self.target_node is not None, "target_node is not set"
+        return self.target_node
 
     def set_source_node(self, source_node: Node):
         self.source_node = source_node
@@ -47,28 +59,24 @@ class Edge:
 
 class Graph:
     id: str
-    nodes: Dict[str, Node]
-    edges: Dict[str, str, Edge]
+    nodes: List[Node]
+    edges: List[Edge]
     source_node: Node
     target_node: Node
 
-    def __init__(self, id: Optional[str] = uuid.uuid1()):
-        self.id = id
-        self.nodes = {}
-        self.edges = {}
+    def __init__(self, id: Optional[str] = None):
+        self.id = id or uuid.uuid1()
+        self.nodes = []
+        self.edges = []
 
     def step(self, current_node: Node) -> Node:
-        print(f"Stepping from node id:{current_node.id}")
+        if current_node == None:
+            return self.target_node
         next_node = None
-        current_node()
-        edges = current_node.edges
+        next_edge = current_node()
 
-        # Depth first implementation
-        # For normal nodes, not for conditional nodes yet
-        for edge in edges.values():
-            print(f"Stepping from edge id:{edge.id}")
-            edge()
-            next_node = edge.target_node
+        if next_edge:
+            next_node = next_edge()
             return next_node
 
         return next_node
@@ -84,11 +92,14 @@ class Graph:
             next_node = self.step(current_node)
             current_node = next_node
 
+        # Finalise by executing target node
+        current_node()
+
     def add_node(self, node: Node):
-        self.nodes[node.id] = node
+        self.nodes.append(node)
 
     def add_edge(self, edge: Edge):
-        self.edges[edge.id] = edge
+        self.edges.append(edge)
 
     def set_source_node(self, node: Node):
         self.source_node = node
@@ -97,17 +108,18 @@ class Graph:
         self.target_node = node
 
     def connect(self, source_node: Node, target_node: Node, edge: Edge):
-        edge.source_node = source_node
-        edge.target_node = target_node
+        assert source_node in self.nodes, "source_node is not in nodes"
+        assert target_node in self.nodes, "target_node is not in nodes"
+        assert source_node != target_node, "source_node is the same as target_node"
         edge.set_source_node(source_node)
         edge.set_target_node(target_node)
         source_node.add_edge(edge)
 
-    def compile(self):
-        for edge in self.edges:
-            source_node = edge.source_node
-            target_node = edge.target_node
-            source_node.add_edge(edge)
-            edge.set_source_node(source_node)
-            edge.set_target_node(target_node)
-            target_node.add_edge(edge)
+    # def compile(self):
+    #     for edge in self.edges:
+    #         source_node = edge.source_node
+    #         target_node = edge.target_node
+    #         source_node.add_edge(edge)
+    #         edge.set_source_node(source_node)
+    #         edge.set_target_node(target_node)
+    #         target_node.add_edge(edge)
