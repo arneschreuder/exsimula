@@ -1,8 +1,6 @@
 from __future__ import annotations
 from abc import ABC
-from collections import OrderedDict
-import json
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 import uuid
 
 
@@ -14,20 +12,19 @@ class Node(ABC):
     def __init__(
         self,
         id: Optional[str] = None,
-        fn: Callable[[Dict], Dict] = None,
+        fn: Optional[Callable[[Dict], Tuple[Dict, str]]] = None,
         edges: Optional[Dict[str, Edge]] = None,
     ):
         self.id = id or uuid.uuid1()
-        self.fn = fn or (lambda: None)
+        self.fn = fn or (lambda x: (x, None))
         self.edges = edges or {}
 
     def __call__(self, state: Dict) -> Tuple[Dict, Optional[Edge]]:
-        print(f"Calling node id:{self.id}")
         # This is the default implementation for the graph that does not have parallel traversal
         # It's kinda like depth first traversal
         # Get all edges, where source node is this node
         if self.fn:
-            state = self.fn(state)
+            state, _ = self.fn(state)
 
         if self.edges and len(self.edges) > 0:
             return (state, next(iter(self.edges.values())))
@@ -38,29 +35,80 @@ class Node(ABC):
         self.edges[edge.id] = edge
 
 
-class Edge:
-    id: str
-    source_node: Node
-    target_node: Node
-    fn: Callable[[Dict], Dict]
+class ConditionalNode(Node):
+    output_mapping: Dict[str, str]
 
     def __init__(
         self,
         id: Optional[str] = None,
-        fn: Callable[[Dict], Dict] = None,
+        fn: Optional[Callable[[Dict], Tuple[Dict, str]]] = None,
+        output_mapping: Optional[Dict[str, str]] = None,
+    ):
+        super().__init__(id, fn)
+        self.output_mapping = output_mapping or {}
+
+    def __call__(self, state: Dict) -> Tuple[Dict, Optional[Edge]]:
+        # This is the default implementation for the graph that does not have parallel traversal
+        # It's kinda like depth first traversal
+        if self.fn:
+            state, route = self.fn(state)
+
+        if route in self.output_mapping:
+            edge_id = self.output_mapping[route]
+            if edge_id in self.edges:
+                return (state, self.edges[edge_id])
+        return (state, None)
+
+
+class LoopNode(Node):
+    range: int
+
+    def __init__(
+        self,
+        id: Optional[str] = None,
+        fn: Optional[Callable[[Dict], Tuple[Dict, str]]] = None,
+        range: Optional[int] = None,
+    ):
+        super().__init__(id, fn)
+        self.range = range or 1
+
+    def __call__(self, state: Dict) -> Tuple[Dict, Optional[Edge]]:
+        for i in range(self.range):
+            # Can only loop contents of the node, so this type of node
+            # does not quite make sense entirely
+            if self.fn:
+                state, _ = self.fn(state)
+
+        # This is the default implementation for the graph that does not have parallel traversal
+        # It's kinda like depth first traversal
+        # Get all edges, where source node is this node
+        if self.edges and len(self.edges) > 0:
+            return (state, next(iter(self.edges.values())))
+        return (state, None)
+
+
+class Edge:
+    id: str
+    source_node: Optional[Node]
+    target_node: Optional[Node]
+    fn: Optional[Callable[[Dict], Tuple[Dict, str]]]
+
+    def __init__(
+        self,
+        id: Optional[str] = None,
+        fn: Optional[Callable[[Dict], Tuple[Dict, str]]] = None,
         source_node: Optional[Node] = None,
         target_node: Optional[Node] = None,
     ):
         self.id = id or uuid.uuid1()
-        self.fn = fn or (lambda: None)
+        self.fn = fn or (lambda x: (x, None))
         self.source_node = source_node
         self.target_node = target_node
 
     def __call__(self, state: Dict) -> Tuple[Dict, Node]:
-        print(f"Calling edge id:{self.id}")
         assert self.target_node is not None, "target_node is not set"
         if self.fn:
-            state = self.fn(state)
+            state, _ = self.fn(state)
         return (state, self.target_node)
 
     def set_source_node(self, source_node: Node):
@@ -89,6 +137,9 @@ class GraphConfig:
         self.nodes = nodes or {}
         self.edges = edges or {}
         self.branches = branches or {}
+
+    def set_id(self, id: str):
+        self.id = id
 
     def add_node(self, id: str, node: Node):
         assert id not in self.nodes, "node id already exists"
@@ -134,6 +185,8 @@ class Graph:
             self.load_config(config)
 
     def load_config(self, config: GraphConfig):
+        self.id = config.id
+
         for id, node in config.nodes.items():
             # Override id if none
             node.id = id
@@ -184,7 +237,7 @@ class Graph:
             current_node = next_node
 
         # Finalise by executing target node
-        state = current_node(state)
+        state, _ = current_node(state)
         return state
 
     def add_node(self, node: Node):
