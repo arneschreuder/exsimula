@@ -1,103 +1,98 @@
-from typing import Dict
-from exsimula.graph import GraphConfig
-from exsimula.llms import OpenAILLM
-from exsimula.program import Memory, Program, Source
-from pprint import pprint
-from dotenv import load_dotenv
+from __future__ import annotations
+from copy import deepcopy
+import random
+import asyncio
+from typing import AsyncGenerator, AsyncIterator, List, Tuple, Union
 
-load_dotenv()
-
-
-def user(state: Dict) -> Dict:
-    user_input = input("USER: ")
-    state["messages"] = state["messages"] + [user_input]
-    return state, None
+from exsimula import Program, Memory, Function
 
 
-def condition(state: Dict) -> Dict:
-    print("condition")
-    state["messages"] = state["messages"] + ["condition"]
-    return state, True
+class MyMemory(Memory):
+    """
+    Custom memory class to track messages.
+    """
+
+    messages: List[str]
 
 
-def f3(state: Dict) -> Dict:
-    print("Agent is executing function")
-    state["messages"] = state["messages"] + ["f3"]
-    return state, None
+class Function1(Function):
+    """
+    A simple function that appends "f1" to the messages in memory.
+    """
+
+    def __call__(self, memory: MyMemory) -> MyMemory:
+        new_memory = deepcopy(memory)
+        new_memory["messages"].append("f1")
+        return new_memory
 
 
-def loop(state: Dict) -> Dict:
-    print("loop")
-    state["messages"] = state["messages"] + ["loop"]
-    return state, None
+class Function2(Function):
+    """
+    A function that appends "f2" to the messages in memory and returns a condition.
+    """
+
+    def __call__(self, memory: MyMemory) -> Tuple[MyMemory, str]:
+        new_memory = deepcopy(memory)
+        new_memory["messages"].append("f2")
+        return new_memory, "true"
 
 
-llm = OpenAILLM("openai")
-source = Source()
-source.add_function("user", user)
-source.add_condition(
-    "condition",
-    condition,
-    {
-        True: "condition:llm",  # This is not great, user only wants to make to next node/function, not edge
-        False: "condition:loop",
-    },
-)
-source.add_function("llm", llm)
-source.add_loop("loop", loop, 10)
-source.add_function("f3", f3)
+class Function3(Function):
+    """
+    A function that appends chunks of "f2" to the messages in memory and returns a condition.
+    """
 
-source.add_step(Source.START, "user")
-source.add_step("user", "condition")
-source.add_step("condition", "llm")
-source.add_step("condition", "loop")
-source.add_step("llm", "user")
-source.add_step("llm", Source.END)
-source.add_step("loop", "f3")
-source.add_step("f3", Source.END)
+    async def __call__(
+        self, memory: MyMemory
+    ) -> AsyncIterator[Union[MyMemory, Tuple[MyMemory, str]]]:
+        new_memory = deepcopy(memory)
 
-program = Program()
-program.compile(source)
+        # Split the message into chunks
+        lorem_ipsum = "One two three"
+        message_chunks = lorem_ipsum.split(" ")
 
-memory = Memory({"messages": []})
-# memory = program(memory)
+        for chunk in message_chunks:
+            await asyncio.sleep(0.5)  # Simulate delay for typing the message
+            new_memory["messages"][
+                -1
+            ] += f" {chunk}"  # Append the chunk to the last message
+            yield new_memory  # Yield the memory so we can stream the intermediate state
 
-pprint(memory)
+        yield new_memory, Program.CONTINUE
 
 
-def graph_config_to_mermaid(graph_config: GraphConfig) -> str:
-    mermaid_lines = ["graph TD;"]
-
-    # Add nodes
-    for node_id in graph_config.nodes:
-        if node_id == Source.START:
-            node_id = f"__{Source.START}__"
-        if node_id == Source.END:
-            node_id = f"__{Source.END}__"
-        mermaid_lines.append(f"{node_id}")
-
-    # # Add edges
-    # for edge_id, edge in graph_config.edges.items():
-    #     source = edge.source_  # Assuming Edge has source and target attributes
-    #     target = edge.target
-    #     mermaid_lines.append(f"  {source} -->|{edge_id}| {target}")
-
-    # Add branches
-    for source_id, targets in graph_config.branches.items():
-        if source_id == Source.START:
-            source_id = f"__{Source.START}__"
-        if source_id == Source.END:
-            source_id = f"__{Source.END}__"
-
-        for target_id, edge_id in targets.items():
-            if target_id == Source.START:
-                target_id = f"__{Source.START}__"
-            if target_id == Source.END:
-                target_id = f"__{Source.END}__"
-            mermaid_lines.append(f"{source_id}-.->|{edge_id}|{target_id}")
-
-    return "\n".join(mermaid_lines)
+def on_memory_update(memory: MyMemory):
+    if memory["messages"]:
+        print("Memory updated: " + memory["messages"][-1])
 
 
-mm = graph_config_to_mermaid(source)
-print(mm)
+async def main():
+    """
+    Main function to demonstrate both synchronous and asynchronous streaming execution.
+    """
+
+    # Define the program
+    program = Program()
+    program.add_function("f1", Function1())
+    program.add_function("f2", Function2())
+    program.add_function("f3", Function3())
+    program.add_step(Program.INIT, "f1")
+    program.add_step("f1", "f2")
+    program.add_condition("f2", {"true": "f3", "false": Program.RETURN})
+    program.add_step("f3", Program.RETURN)
+    program.subscribe(on_memory_update)
+
+    # Synchronous execution
+    # memory = MyMemory(messages=[])
+    # memory = await program(memory, run_async=False)
+    # print(memory)
+
+    # Asynchronous streaming execution
+    memory = MyMemory(messages=[])
+    async for memory in await program(memory, run_async=True):
+        # print(memory)
+        pass
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
